@@ -165,7 +165,8 @@ if __name__ == "__main__":
     }
     
     # Test case: acetic acid + methylamine
-    reactants = ['CC(=O)O', 'CN'] 
+    #reactants = ['CC(=O)O', 'CN'] 
+    reactants = ['CCC=O', 'CN'] 
     
     results = find_best_reactions(reactants, reaction_library)
     
