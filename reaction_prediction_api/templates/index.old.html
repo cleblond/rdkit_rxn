@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Organic Reaction Predictor</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+            
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #34495e;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        input[type="text"]:focus {
+            border-color: #3498db;
+            outline: none;
+        }
+        button {
+            background-color: #3498db;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            width: 100%;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        button:disabled {
+            background-color: #95a5a6;
+            cursor: not-allowed;
+        }
+        .loading {
+            text-align: center;
+            display: none;
+        }
+        .results {
+            margin-top: 30px;
+            display: none;
+        }
+        .reaction-card {
+            background: #ecf0f1;
+            padding: 20px;
+            margin-bottom: 15px;
+            border-radius: 5px;
+            border-left: 4px solid #3498db;
+        }
+        .reaction-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .reaction-name {
+            font-weight: bold;
+            color: #2c3e50;
+            font-size: 18px;
+        }
+        .score {
+            background: #27ae60;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-weight: bold;
+        }
+        .products {
+            margin-top: 10px;
+        }
+        .product {
+            background: white;
+            padding: 8px 12px;
+            margin: 5px 0;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+        .reasons {
+            font-style: italic;
+            color: #7f8c8d;
+            margin-top: 10px;
+        }
+        .error {
+            color: #e74c3c;
+            background: #fadbd8;
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+        }
+        .success {
+            color: #27ae60;
+            background: #d5f4e6;
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Organic Reaction Predictor</h1>
+        
+        <div class="form-group">
+            <label for="reactant1">Reactant 1 SMILES:</label>
+            <input type="text" id="reactant1" placeholder="e.g., CC(=O)O (acetic acid)" value="CC(=O)O">
+        </div>
+        
+        <div class="form-group">
+            <label for="reactant2">Reactant 2 SMILES (optional):</label>
+            <input type="text" id="reactant2" placeholder="e.g., CN (methylamine)" value="CN">
+        </div>
+        
+        <button onclick="predictReactions()">Predict Reactions</button>
+        
+        <div class="loading" id="loading">
+            <p>🔬 Analyzing molecules and predicting reactions...</p>
+        </div>
+        
+        <div class="results" id="results">
+            <h2>Prediction Results</h2>
+            <div id="resultsContainer"></div>
+        </div>
+    </div>
+
+    <script>
+        async function predictReactions() {
+            const reactant1 = document.getElementById('reactant1').value.trim();
+            const reactant2 = document.getElementById('reactant2').value.trim();
+            
+            if (!reactant1) {
+                alert('Please enter at least one reactant SMILES string');
+                return;
+            }
+            
+            // Show loading
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('results').style.display = 'none';
+            
+            try {
+                const response = await fetch('/predict', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        reactant1: reactant1,
+                        reactant2: reactant2
+                    })
+                });
+                
+                const data = await response.json();
+                
+                // Hide loading
+                document.getElementById('loading').style.display = 'none';
+                
+                if (data.error) {
+                    showError(data.error);
+                    return;
+                }
+                
+                displayResults(data);
+                
+            } catch (error) {
+                document.getElementById('loading').style.display = 'none';
+                showError('Network error: ' + error.message);
+            }
+        }
+        
+        function displayResults(data) {
+            const container = document.getElementById('resultsContainer');
+            container.innerHTML = '';
+            
+            if (data.total_reactions_found === 0) {
+                container.innerHTML = `
+                    <div class="error">
+                        No plausible reactions found for the given reactants.
+                    </div>
+                `;
+            } else {
+                container.innerHTML = `
+                    <div class="success">
+                        Found ${data.total_reactions_found} possible reaction(s) for: 
+                        ${data.reactants.join(' + ')}
+                    </div>
+                `;
+                
+                data.reactions.forEach(reaction => {
+                    const reactionHtml = `
+                        <div class="reaction-card">
+                            <div class="reaction-header">
+                                <span class="reaction-name">${reaction.reaction_name}</span>
+                                <span class="score">Score: ${reaction.score.toFixed(2)}</span>
+                            </div>
+                            <div class="reasons">
+                                ${reaction.reasons.join(' • ')}
+                            </div>
+                            <div class="products">
+                                <strong>Products:</strong>
+                                ${reaction.products.map(product => `
+                                    <div class="product">${product}</div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `;
+                    container.innerHTML += reactionHtml;
+                });
+            }
+            
+            document.getElementById('results').style.display = 'block';
+        }
+        
+        function showError(message) {
+            const container = document.getElementById('resultsContainer');
+            container.innerHTML = `
+                <div class="error">
+                    Error: ${message}
+                </div>
+            `;
+            document.getElementById('results').style.display = 'block';
+        }
+        
+        // Allow pressing Enter to submit
+        document.addEventListener('DOMContentLoaded', function() {
+            const inputs = document.querySelectorAll('input[type="text"]');
+            inputs.forEach(input => {
+                input.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') {
+                        predictReactions();
+                    }
+                });
+            });
+        });
+    </script>
+</body>
+</html>
