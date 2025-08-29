@@ -2,6 +2,11 @@ from flask import Flask, render_template, request, jsonify, send_from_directory
 from rdkit import Chem
 from rdkit.Chem import AllChem, Descriptors
 from rdkit.Chem.AllChem import ReactionFromSmarts
+from rdkit.Chem.Descriptors import MolWt
+from rdkit.Chem.Descriptors import ExactMolWt
+from rdkit.Chem import MolToSmiles
+from rdkit.Chem import rdMolDescriptors
+from rdkit.Chem import rdChemReactions
 import json
 
 app = Flask(__name__)
@@ -28,6 +33,112 @@ reaction_library = {
     'ester_hydrolysis': '[O:1]=[C:2][O:3][C:4]>>[O:1]=[C:2][OH].[OH:3][C:4]',
     'reductive_amination': '[C:1]=[O:2].[N!H0:3]>>[C:1][N:3]',
 }
+
+
+
+def smiles_to_cml_with_3d(smiles_string):
+    """
+    Generates a 3D-embedded molecule and returns its structure in CML format.
+    Returns None if conversion fails.
+    """
+    try:
+        if not smiles_string or not isinstance(smiles_string, str):
+            print(f"Invalid SMILES input: {smiles_string}")
+            return None
+            
+        mol = Chem.MolFromSmiles(smiles_string)
+        if mol is None:
+            print(f"RDKit failed to parse SMILES: {smiles_string}")
+            return None
+
+        # Add hydrogens for better 3D structure
+        #mol_with_hs = Chem.AddHs(mol)
+        
+        AllChem.Compute2DCoords(mol)
+        
+
+        
+        
+        # Convert to CML format using RDKit's CML writer
+        cml_block = Chem.MolToCMLBlock(mol)
+        
+        if cml_block.startswith('<?xml'):
+            # Find the first line break after the XML declaration
+            lines = cml_block.split('\n', 1)
+            if len(lines) > 1:
+                cml_block = lines[1]  # Keep everything after the first line
+        
+        print(cml_block)
+        
+        return cml_block
+        
+    except Exception as e:
+        print(f"Error processing SMILES '{smiles_string}' with RDKit: {e}")
+        return None
+
+def smiles_to_cml_with_2d(smiles_string):
+    """
+    Generates a molecule with 2D coordinates and returns its structure in CML format.
+    Returns None if conversion fails.
+    """
+    try:
+        if not smiles_string or not isinstance(smiles_string, str):
+            print(f"Invalid SMILES input: {smiles_string}")
+            return None
+            
+        mol = Chem.MolFromSmiles(smiles_string)
+        if mol is None:
+            print(f"RDKit failed to parse SMILES: {smiles_string}")
+            return None
+
+        # Generate 2D coordinates (this is key for 2D display)
+        AllChem.Compute2DCoords(mol)
+        
+        # Generate CML manually with 2D coordinates
+        conf = mol.GetConformer()
+        cml_lines = []
+        cml_lines.append('<cml xmlns="http://www.xml-cml.org/schema">')
+        cml_lines.append('  <molecule>')
+        
+        # Add atom array with 2D coordinates
+        cml_lines.append('    <atomArray>')
+        for i, atom in enumerate(mol.GetAtoms()):
+            pos = conf.GetAtomPosition(i)
+            element = atom.GetSymbol()
+            # Use x2 and y2 for 2D coordinates instead of x3, y3, z3
+            cml_lines.append(f'      <atom id="a{i}" elementType="{element}" x2="{pos.x:.6f}" y2="{pos.y:.6f}"/>')
+        cml_lines.append('    </atomArray>')
+        
+        # Add bond array
+        cml_lines.append('    <bondArray>')
+        for i, bond in enumerate(mol.GetBonds()):
+            begin_idx = bond.GetBeginAtomIdx()
+            end_idx = bond.GetEndAtomIdx()
+            order = bond.GetBondTypeAsDouble()
+            # Convert bond order to CML format
+            if order == 1.0:
+                bond_order = "S"
+            elif order == 2.0:
+                bond_order = "D"
+            elif order == 3.0:
+                bond_order = "T"
+            elif order == 1.5:  # Aromatic
+                bond_order = "A"
+            else:
+                bond_order = "S"  # Default to single
+                
+            cml_lines.append(f'      <bond id="b{i}" atomRefs2="a{begin_idx} a{end_idx}" order="{bond_order}"/>')
+        cml_lines.append('    </bondArray>')
+        
+        cml_lines.append('  </molecule>')
+        cml_lines.append('</cml>')
+        
+        return '\n'.join(cml_lines)
+        
+    except Exception as e:
+        print(f"Error processing SMILES '{smiles_string}' with RDKit: {e}")
+        return None
+
 
 def run_reaction(reaction_smarts, reactant_list):
     """Applies a reaction and returns unique products."""
@@ -107,10 +218,20 @@ def find_best_reactions(reactant_smiles_list):
             # Convert products to serializable format
             product_smiles = [Chem.MolToSmiles(prod) for prod in products]
             
+
+            
+            product_cmls = []
+            for smiles in product_smiles:
+                cml = smiles_to_cml_with_2d(smiles)  # Passing individual SMILES string
+                product_cmls.append(cml)
+            
+            
+            
             results.append({
                 'reaction_name': rxn_name,
                 'score': score,
                 'products': product_smiles,
+                'products_cmls': product_cmls,
                 'reasons': reasons,
                 'smarts': rxn_smarts
             })

@@ -238,12 +238,8 @@
             var cmlData1 = '<cml xmlns="http://www.xml-cml.org/schema"><molecule id="m1"><atomArray><atom id="a1" elementType="C" x2="14.399999999999984" y2="46.39999999999995"/><atom id="a2" elementType="O" x2="15.092820323027535" y2="45.99999999999995"/><atom id="a4" elementType="O" x2="14.399999999999984" y2="47.19999999999995"/><atom id="a3" elementType="C" x2="13.707179676972434" y2="45.99999999999995"/></atomArray><bondArray><bond id="b1" order="S" atomRefs2="a1 a2"/><bond id="b3" order="D" atomRefs2="a1 a4"/><bond id="b2" order="S" atomRefs2="a1 a3"/></bondArray></molecule></cml>';            
             
 
-	    var myMolecule = Kekule.IO.loadFormatData(cmlData1, 'cml');
-	    reactant1Editor.setChemObj(myMolecule);
-            
-
-            
-              
+	        var myMolecule = Kekule.IO.loadFormatData(cmlData1, 'cml');
+	        reactant1Editor.setChemObj(myMolecule);
             
             //reactant1Editor.appendToWidget();
             
@@ -254,7 +250,7 @@
             var cmlData2 = '<cml xmlns="http://www.xml-cml.org/schema"><molecule id="m1"><atomArray><atom id="a2" elementType="C" x2="7.493264658965051" y2="35.58088907877604"/><atom id="a3" elementType="O" x2="8.186084981992602" y2="35.18088907877604"/><atom id="a1" elementType="C" x2="6.800444335937501" y2="35.18088907877604"/></atomArray><bondArray><bond id="b2" order="S" atomRefs2="a2 a3"/><bond id="b1" order="S" atomRefs2="a2 a1"/></bondArray></molecule></cml>'; 
 
             var myMolecule = Kekule.IO.loadFormatData(cmlData2, 'cml');
-	    reactant2Editor.setChemObj(myMolecule);     
+	        reactant2Editor.setChemObj(myMolecule);     
             
             
             //reactant2Editor.appendToWidget();
@@ -276,6 +272,8 @@
         function getEditor(reactantId) {
             return reactantId === 'reactant1' ? reactant1Editor : reactant2Editor;
         }
+        
+        
         
         
         
@@ -341,6 +339,9 @@
                 
                 const data = await response.json();
                 
+                // STORE THE RESPONSE PROPERLY
+                window.lastResponse = data; // This is the key line!
+                
                 // Hide loading
                 document.getElementById('loading').style.display = 'none';
                 
@@ -351,13 +352,205 @@
                 
                 displayResults(data);
                 
+                console.log(data);
+                
             } catch (error) {
                 document.getElementById('loading').style.display = 'none';
                 showError('Network error: ' + error.message);
             }
         }
         
+        
+        
+        
+        
+        
         function displayResults(data) {
+            const container = document.getElementById('resultsContainer');
+            container.innerHTML = '';
+            
+            if (data.total_reactions_found === 0) {
+                container.innerHTML = `
+                    <div class="error">
+                        No plausible reactions found for the given reactants.
+                    </div>
+                `;
+            } else {
+                container.innerHTML = `
+                    <div class="success">
+                        Found ${data.total_reactions_found} possible reaction(s) for: 
+                        ${data.reactants.join(' + ')}
+                    </div>
+                `;
+                
+                data.reactions.forEach((reaction, reactionIndex) => {
+                    const reactionHtml = `
+                        <div class="reaction-card">
+                            <div class="reaction-header">
+                                <span class="reaction-name">${reaction.reaction_name.replace(/_/g, ' ')}</span>
+                                <span class="score">Score: ${reaction.score.toFixed(2)}</span>
+                            </div>
+                            <div class="reasons">
+                                ${reaction.reasons.join(' • ')}
+                            </div>
+                            <div class="products">
+                                <strong>Products:</strong>
+                                ${reaction.products.map((product, productIndex) => {
+                                    const viewerId = `viewer-${reactionIndex}-${productIndex}`;
+                                    return `
+                                        <div class="product">
+                                            <div class="product-info">
+                                                <div class="smiles-label">SMILES: </div>
+                                                <div class="smiles-value">${product}</div>
+                                            </div>
+                                            <div class="product-viewer-container">
+                                                <div id="${viewerId}" class="kekule-container" style="height: 150px;"></div>
+                                            </div>
+                                        </div>
+                                    `;
+                                }).join('')}
+                            </div>
+                        </div>
+                    `;
+                    container.innerHTML += reactionHtml;
+                });
+                
+                // Auto-load all 2D structures after rendering
+                setTimeout(() => {
+                    data.reactions.forEach((reaction, reactionIndex) => {
+                        reaction.products.forEach((product, productIndex) => {
+                            const viewerId = `viewer-${reactionIndex}-${productIndex}`;
+                            loadCmlTo2DViewer(viewerId, reactionIndex, productIndex, data);
+                        });
+                    });
+                }, 100);
+            }
+            
+            document.getElementById('results').style.display = 'block';
+        }
+
+
+        function loadCmlTo2DViewer(viewerId, reactionIndex, productIndex, responseData) {
+            const viewerElement = document.getElementById(viewerId);
+            
+            console.log(viewerElement);
+            
+            try {
+                viewerElement.innerHTML = '';
+                
+                const viewer = new Kekule.ChemWidget.Viewer(viewerElement);
+                //viewer.setPredefinedSetting(Kekule.Widget.Setting.DEFAULT_MOLECULE_2D);
+                //viewer.setEnableToolbar(false);
+                
+                // Get the product data from the response
+                console.log(viewer);
+                console.log(responseData);
+                const reaction = responseData.reactions[reactionIndex];
+                console.log(reaction);
+                const productSmiles = reaction.products[productIndex];
+                
+                const cmlData = reaction.products_cmls[productIndex];
+                
+                console.log(cmlData);
+                
+                if (cmlData && !cmlData.startsWith('# Could not generate')) {
+                    // Use CML for better coordinates
+                    try {
+                        //console.log(Kekule.IO.DataFormat);
+                        const molecule = Kekule.IO.loadFormatData(cmlData, 'cml');
+                        console.log(molecule);
+                        if (molecule) {
+                            viewer.setChemObj(molecule);
+                            //viewer.appendToWidget();
+                            return;
+                        }
+                    } catch (cmlError) {
+                        console.log('CML loading failed, falling back to SMILES:', cmlError);
+                        // Continue to SMILES fallback
+                    }
+                }
+                
+                // Fallback to SMILES if CML is not available or failed
+                const molecule = Kekule.IO.loadFormatData(productSmiles, 'smi');
+                if (molecule) {
+                    viewer.setChemObj(molecule);
+                    viewer.appendToWidget();
+                    setTimeout(() => {
+                        try {
+                            viewer.zoomToFit();
+                        } catch (e) {
+                            console.log('Zoom failed:', e);
+                        }
+                    }, 50);
+                } else {
+                    throw new Error('Failed to parse molecule');
+                }
+                
+            } catch (error) {
+                console.error('Error loading molecule:', error);
+                viewerElement.innerHTML = `
+                    <div class="error" style="padding: 5px; font-size: 12px;">
+                        Failed to display structure
+                    </div>
+                `;
+            }
+        }
+
+
+
+
+
+
+
+        // Function to load SMILES into a 2D viewer
+        function loadSmilesToViewer(viewerId, smiles) {
+            const viewerElement = document.getElementById(viewerId);
+            
+            try {
+                // Clear any existing content
+                viewerElement.innerHTML = '';
+                
+                // Create a new 2D viewer
+                const viewer = new Kekule.ChemWidget.Viewer2D(viewerElement);
+                viewer.setPredefinedSetting('editOnly');
+                //viewer.setPredefinedSetting(Kekule.Widget.Setting.DEFAULT_MOLECULE_2D);
+                viewer.setEnableToolbar(false); // Disable toolbar for cleaner look
+                
+                // Load the SMILES directly
+                const molecule = Kekule.IO.loadFormatData(smiles, 'smi');
+                if (molecule) {
+                    viewer.setChemObj(molecule);
+                    viewer.appendToWidget();
+                    
+                    // Center and fit the molecule in the viewer
+                    setTimeout(() => {
+                        viewer.zoomToFit();
+                    }, 50);
+                } else {
+                    throw new Error('Failed to parse SMILES');
+                }
+            } catch (error) {
+                console.error('Error loading SMILES:', error, smiles);
+                viewerElement.innerHTML = `
+                    <div class="error" style="padding: 5px; font-size: 12px;">
+                        Failed to display structure
+                    </div>
+                `;
+            }
+        }
+
+        // Store the last response globally
+        let lastResponse = null;
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        function displayResults_old(data) {
             const container = document.getElementById('resultsContainer');
             container.innerHTML = '';
             
