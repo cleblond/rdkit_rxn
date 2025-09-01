@@ -253,18 +253,56 @@ def find_best_reactions(reactant_smiles_list):
 def index():
     return render_template('index.html')
 
+@app.route('/reactions', methods=['GET'])
+def get_reactions():
+    # Convert reaction_library to a list of dictionaries
+    reactions = [{"id": key, "name": key.replace('_', ' ').capitalize()} for key in reaction_library.keys()]
+    return jsonify(reactions)
+
+
 @app.route('/predict', methods=['POST'])
 def predict_reactions():
     try:
         data = request.get_json()
+        print(data)
         reactant1 = data.get('reactant1', '').strip()
         reactant2 = data.get('reactant2', '').strip()
+        selected_reaction = data.get('reaction', '').strip()  # Get selected reaction
         
         # Create list of non-empty reactants
         reactants = [r for r in [reactant1, reactant2] if r]
         
         if not reactants:
             return jsonify({"error": "Please provide at least one reactant"})
+        
+        # If a specific reaction is selected, run only that reaction
+        print(f"Selected reaction: {selected_reaction}");
+        if selected_reaction and selected_reaction in reaction_library:
+            reaction_smarts = reaction_library[selected_reaction]
+            print(f"Reaction Smarts: {reaction_smarts}")
+            #products = run_reaction(rxn_smarts, reactants)
+            #score, reasons = advanced_evaluation(reactants, products, rxn_name)
+            print(f"Reactants: {reactants}")
+            products = run_reaction(reaction_smarts, [Chem.MolFromSmiles(r) for r in reactants])
+            score, reasons = advanced_evaluation([Chem.MolFromSmiles(r) for r in reactants], products, selected_reaction)
+
+            product_smiles = [Chem.MolToSmiles(prod) for prod in products]
+            product_cmls = [smiles_to_cml_with_2d(smiles) for smiles in product_smiles]
+
+            return jsonify({
+                "success": True,
+                "reactants": reactants,
+                "reactions": [{
+                    "reaction_name": selected_reaction,
+                    "score": score,
+                    "products": product_smiles,
+                    "products_cmls": product_cmls,
+                    "reasons": reasons,
+                    "smarts": reaction_smarts
+                }],
+                "total_reactions_found": 1 if products else 0
+            })
+
         
         results = find_best_reactions(reactants)
         

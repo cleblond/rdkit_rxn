@@ -196,6 +196,12 @@
         </div>
         
         <div class="button-container">
+
+            <label for="reactionSelect">Select Reaction:</label>
+            <select id="reactionSelect">
+                <option value="">-- Select a Reaction --</option>
+            </select>
+
             <button onclick="predictReactions()">Predict Reactions</button>
         </div>
         
@@ -239,6 +245,7 @@
             
 
 	        var myMolecule = Kekule.IO.loadFormatData(cmlData1, 'cml');
+            //var myMolecule = new Kekule.Molecule();
 	        reactant1Editor.setChemObj(myMolecule);
             
             //reactant1Editor.appendToWidget();
@@ -311,11 +318,32 @@
             }
             return null;
         }
+
+
+        document.addEventListener('DOMContentLoaded', async function() {
+            try {
+                const response = await fetch('/reactions');
+                const reactions = await response.json();
+                const reactionSelect = document.getElementById('reactionSelect');
+                console.log(reactions);
+                reactions.forEach(reaction => {
+                    const option = document.createElement('option');
+                    option.value = reaction.id;
+                    option.textContent = reaction.name;
+                    reactionSelect.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Error fetching reactions:', error);
+            }
+        });
+
+
         
         async function predictReactions() {
             const smiles1 = getSmilesFromEditor('reactant1');
             const smiles2 = getSmilesFromEditor('reactant2');
-            
+            const selectedReaction = document.getElementById('reactionSelect').value;
+
             if (!smiles1) {
                 alert('Please draw a molecule for Reactant 1');
                 return;
@@ -333,7 +361,8 @@
                     },
                     body: JSON.stringify({
                         reactant1: smiles1,
-                        reactant2: smiles2
+                        reactant2: smiles2,
+                        reaction: selectedReaction
                     })
                 });
                 
